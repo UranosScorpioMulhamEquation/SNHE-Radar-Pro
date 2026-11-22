@@ -1,6 +1,6 @@
 import base64
 import html
-import random
+import math
 from datetime import date, datetime, timedelta
 
 import pandas as pd
@@ -60,20 +60,30 @@ SATURN_CYCLES = 15
 APEX_CYCLE = 10
 CRITICAL_CYCLE = 9
 
+# الثوابت الفيزيائية الكبلرية لهوميا وإيريس
+T_HAUMEA = 283.28
+T_ERIS = 558.0
+E_HAUMEA = 0.1964
+E_ERIS = 0.43607
+M0_HAUMEA_DEG = 216.0
+M0_ERIS_DEG = 197.6
+
 STATUS_NORMAL = "Normal"
+STATUS_PHASE_HARMONIC = "PHASE_HARMONIC"
 STATUS_CRITICAL = "CRITICAL"
 STATUS_FOUR_AXIS = "FOUR_AXIS"
 STATUS_UNIFIED = "UNIFIED"
 STATUS_APEX = "APEX"
 
 SATURN_CONFIRMED = {STATUS_FOUR_AXIS, STATUS_UNIFIED, STATUS_APEX}
-NEPTUNE_CRITICAL = SATURN_CONFIRMED | {STATUS_CRITICAL}
+ACTIVE_RADAR = SATURN_CONFIRMED | {STATUS_CRITICAL, STATUS_PHASE_HARMONIC}
 
 STATUS_UI = {
     STATUS_APEX: ("ذروة زحل (APEX)", "#f59e0b"),
     STATUS_UNIFIED: ("تقاطع موحّد (UNIFIED)", "#06b6d4"),
     STATUS_FOUR_AXIS: ("توافق رباعي المحاور (Δ_Saturn ≤ ε)", "#38bdf8"),
     STATUS_CRITICAL: ("حرجة ثلاثية (CRITICAL)", "#f43f5e"),
+    STATUS_PHASE_HARMONIC: ("رنين طوري-توافقي مطوّر (علاج الفجوة)", "#10b981"),
     STATUS_NORMAL: ("عادية (Normal)", "#64748b"),
 }
 
@@ -99,13 +109,23 @@ ASPECTS = [
     (60.0, "تسديس (60°)", 4.5),
 ]
 
+PHASE_ANGLES = [
+    (0.0, "اقتران زاوي (0°)"),
+    (45.0, "نصف تربيع طوري (45°)"),
+    (60.0, "تسديس طوري (60°)"),
+    (90.0, "تربيع طوري حرج (90°)"),
+    (120.0, "تثليث طوري (120°)"),
+    (135.0, "تربيع ونصف طوري (135°)"),
+    (180.0, "مقابلة طورية (180°)"),
+]
+
 DISCLAIMER = (
     "هذا النموذج بحثي واسترشادي، ولا يُعدّ بديلاً عن الاستشارة الطبية أو المالية "
     "أو القانونية المتخصصة."
 )
 
 
-# ==================== 2. الدوال الفلكية والحسابية الدقيقة ====================
+# ==================== 2. الدوال الفلكية والكبلرية ====================
 def get_zodiac_sign(longitude: float):
     longitude = longitude % 360.0
     sign_index = int(longitude // 30) % 12
@@ -128,6 +148,32 @@ def angular_separation(lon_a: float, lon_b: float) -> float:
     return 360.0 - diff if diff > 180.0 else diff
 
 
+def solve_kepler_true_anomaly_deg(mean_anomaly_deg: float, eccentricity: float) -> float:
+    """حل معادلة كبلر M = E - e*sin(E) لحساب الشذوذ الحقيقي للأجرام الإهليلجية"""
+    m_rad = math.radians(mean_anomaly_deg % 360.0)
+    e_anom = m_rad + eccentricity * math.sin(m_rad)
+    for _ in range(8):
+        f = e_anom - eccentricity * math.sin(e_anom) - m_rad
+        fp = 1.0 - eccentricity * math.cos(e_anom)
+        e_anom -= f / fp
+    nu = 2.0 * math.atan2(
+        math.sqrt(1.0 + eccentricity) * math.sin(e_anom / 2.0),
+        math.sqrt(1.0 - eccentricity) * math.cos(e_anom / 2.0),
+    )
+    return math.degrees(nu) % 360.0
+
+
+def kepler_true_shift_deg(
+    birth_jd: float, target_jd: float, period_years: float, eccentricity: float, m0_deg: float
+) -> float:
+    j2000_jd = 2451545.0
+    years_b = (birth_jd - j2000_jd) / 365.25
+    years_t = (target_jd - j2000_jd) / 365.25
+    nu_b = solve_kepler_true_anomaly_deg(m0_deg + (years_b / period_years) * 360.0, eccentricity)
+    nu_t = solve_kepler_true_anomaly_deg(m0_deg + (years_t / period_years) * 360.0, eccentricity)
+    return (nu_t - nu_b) % 360.0
+
+
 def find_strongest_aspect(transit_lon: float, natal_points: list):
     best = None
     for target_lon, target_name in natal_points:
@@ -146,6 +192,44 @@ def find_strongest_aspect(transit_lon: float, natal_points: list):
     return best
 
 
+def compute_true_phase_coupling(
+    birth_jd: float, target_jd: float, sun_lon0: float, sat_lon0: float, nep_lon0: float
+):
+    sat_lon = get_planet_longitude(target_jd, swe.SATURN)
+    nep_lon = get_planet_longitude(target_jd, swe.NEPTUNE)
+
+    pairs = [
+        (sat_lon, sat_lon0, "زحل العابر مع زحل الأصلي", (0.0, 90.0, 180.0), 1.0),
+        (nep_lon, nep_lon0, "نبتون العابر مع نبتون الأصلي", (0.0, 45.0, 60.0, 90.0, 120.0, 180.0), 1.0),
+        (nep_lon, sun_lon0, "نبتون العابر مع الشمس الأصلية", (0.0, 60.0, 90.0, 120.0, 180.0), 1.05),
+        (sat_lon, sun_lon0, "زحل العابر مع الشمس الأصلية", (0.0, 90.0, 180.0), 1.05),
+    ]
+
+    best_eff = 90.0
+    best_raw = 90.0
+    best_label = "طور مداري محايد"
+
+    for t_lon, n_lon, pair_name, allowed, weight in pairs:
+        sep = angular_separation(t_lon, n_lon)
+        for angle in allowed:
+            orb = abs(sep - angle)
+            eff = orb * weight
+            if eff < best_eff:
+                best_eff = eff
+                best_raw = orb
+                ang_lbl = next((lbl for a, lbl in PHASE_ANGLES if a == angle), f"{angle}°")
+                best_label = f"{ang_lbl} · {pair_name}"
+
+    true_phase_dev = min(0.5, best_eff / 18.0)
+    return {
+        "true_phase_dev": true_phase_dev,
+        "best_orb_deg": best_raw,
+        "phase_label": best_label,
+        "haumea_kepler_shift": kepler_true_shift_deg(birth_jd, target_jd, T_HAUMEA, E_HAUMEA, M0_HAUMEA_DEG),
+        "eris_kepler_shift": kepler_true_shift_deg(birth_jd, target_jd, T_ERIS, E_ERIS, M0_ERIS_DEG),
+    }
+
+
 def safe_add_years_and_days(birth_date: date, years: int, offset_days: int) -> date:
     target_year = birth_date.year + years
     try:
@@ -155,7 +239,7 @@ def safe_add_years_and_days(birth_date: date, years: int, offset_days: int) -> d
     return base + timedelta(days=offset_days)
 
 
-# ==================== 3. محرك الرادار (زحل 4.48 + نبتون + هوميا + إيريس) ====================
+# ==================== 3. محرك الرادار المطوّر (زحل 4.48 + الرنين المستمر + الطور) ====================
 def fractional_deviation(age: int, k: float) -> float:
     ratio = age / k
     return abs(ratio - round(ratio))
@@ -181,7 +265,7 @@ def saturn_layer(age: int):
     }
 
 
-def classify_status(neptune_critical: bool, saturn: dict) -> str:
+def classify_base_status(neptune_critical: bool, saturn: dict) -> str:
     if not neptune_critical:
         return STATUS_NORMAL
     if saturn["SaturnMarker"] == "Apex Resonance":
@@ -193,7 +277,7 @@ def classify_status(neptune_critical: bool, saturn: dict) -> str:
     return STATUS_CRITICAL
 
 
-def run_usm_engine_daily(birth_date: date):
+def run_upgraded_usm_engine(birth_date: date, birth_jd: float, sun_lon0: float, sat_lon0: float, nep_lon0: float):
     results = []
     for i in range(1, MAX_AGE + 1):
         homo_dev = fractional_deviation(i, K_HAUMEA)
@@ -204,21 +288,38 @@ def run_usm_engine_daily(birth_date: date):
             homo_dev <= EPSILON and eris_dev <= EPSILON and neptune_dev <= EPSILON
         )
         saturn = saturn_layer(i)
-        status = classify_status(neptune_critical, saturn)
+        base_status = classify_base_status(neptune_critical, saturn)
 
         offset_days = int(homo_dev * 12) * 30 + int(eris_dev * 30)
         target_date = safe_add_years_and_days(birth_date, i, offset_days)
+        target_jd = swe.julday(target_date.year, target_date.month, target_date.day, 12.0)
+
+        harmonic_rms = math.sqrt(
+            (homo_dev ** 2 + eris_dev ** 2 + neptune_dev ** 2 + saturn["SaturnDev"] ** 2) / 4.0
+        )
+        phase_info = compute_true_phase_coupling(birth_jd, target_jd, sun_lon0, sat_lon0, nep_lon0)
+        hybrid_dev = 0.55 * harmonic_rms + 0.45 * phase_info["true_phase_dev"]
+
+        status = base_status
+        if base_status == STATUS_NORMAL and hybrid_dev <= 0.23 and phase_info["true_phase_dev"] <= EPSILON:
+            status = STATUS_PHASE_HARMONIC
 
         results.append({
             "DateStr": target_date.strftime("%Y-%m-%d"),
             "YearDate": target_date,
             "Age": i,
             "Status": status,
+            "ClassicStatus": base_status,
             "HaumeaDev": homo_dev,
             "ErisDev": eris_dev,
             "NeptuneDev": neptune_dev,
             "SaturnDev": saturn["SaturnDev"],
             "SaturnCycle": saturn["SaturnCycle"],
+            "HarmonicRms": harmonic_rms,
+            "TruePhaseDev": phase_info["true_phase_dev"],
+            "HybridDev": hybrid_dev,
+            "PhaseLabel": phase_info["phase_label"],
+            "PhaseOrbDeg": phase_info["best_orb_deg"],
         })
     return results
 
@@ -316,8 +417,9 @@ def analyze_reference_transit(
         f" ({asp['name']} مع {asp['target']}، جرم {asp['orb']:.1f}°)"
         if asp else ""
     )
+    prefix = "رنين طوري-توافقي مسترد · " if status == STATUS_PHASE_HARMONIC else ""
     return (
-        f"العبور الأقوى فلكياً: {dominant['planet_name']} في برج {dominant['sign_name']} "
+        f"{prefix}العبور الأقوى فلكياً: {dominant['planet_name']} في برج {dominant['sign_name']} "
         f"({dominant['deg']:.1f}°) بالبيت {dominant['house']}{asp_txt} — {focus}."
     )
 
@@ -330,7 +432,7 @@ def build_html_report(name, entity_type, birth_date, sun_sign_name, df_results, 
 <html dir="rtl" lang="ar">
 <head>
   <meta charset="utf-8">
-  <title>تقرير السنوات الحرجة (زحل - نبتون - هوميا - إيريس) - {name_esc}</title>
+  <title>تقرير السنوات الحرجة والطور التوافقي (زحل - نبتون - هوميا - إيريس) - {name_esc}</title>
   <style>
     body {{ font-family: 'Cairo', Tahoma, sans-serif; padding: 30px; color: #1e293b; background: #fff; }}
     h1 {{ color: #0f172a; text-align: center; }}
@@ -343,12 +445,12 @@ def build_html_report(name, entity_type, birth_date, sun_sign_name, df_results, 
   </style>
 </head>
 <body>
-  <h1>تقرير السنوات الحرجة: زحل - نبتون - هوميا - إيريس</h1>
+  <h1>تقرير السنوات الحرجة والطور التوافقي: زحل - نبتون - هوميا - إيريس</h1>
   <div class="meta">
     <p><strong>اسم الكيان:</strong> {name_esc} ({entity_esc})</p>
     <p><strong>تاريخ الميلاد / التأسيس:</strong> {birth_date}</p>
     <p><strong>البرج الشمسي تلقائياً (Whole Sign):</strong> {html.escape(sun_sign_name)}</p>
-    <p><strong>نطاق العرض:</strong> السنوات الحرجة (زحل - نبتون - هوميا - إيريس)</p>
+    <p><strong>نطاق العرض:</strong> السنوات الحرجة والطور التوافقي (زحل - نبتون - هوميا - إيريس)</p>
     <p><strong>الثوابت المثبتة:</strong> هوميا {K_HAUMEA} | إيريس {K_ERIS} | نبتون {K_NEPTUNE} | زحل {K_SATURN} | ε = {EPSILON:.2f}</p>
     <p><strong>تاريخ إصدار التقرير:</strong> {datetime.now().strftime('%Y-%m-%d')}</p>
   </div>
@@ -357,20 +459,20 @@ def build_html_report(name, entity_type, birth_date, sun_sign_name, df_results, 
       <th>{html.escape(age_label)}</th>
       <th>التاريخ المستهدف</th>
       <th>حالة الرادار</th>
-      <th>زحل 4.48</th>
+      <th>زحل 4.48 / الهجين</th>
       <th>العبور المرجعي والتفاصيل</th>
     </tr>
 """
     for _, row in df_results.iterrows():
         status_label, status_color = STATUS_UI[row["Status"]]
-        saturn_cell = f"الدورة {row['SaturnCycle']} | انحراف {row['SaturnDev']:.3f}"
+        saturn_cell = f"الدورة {row['SaturnCycle']} | Δ_s={row['SaturnDev']:.3f} | Δ_hyb={row['HybridDev']:.3f}"
         report += f"""
     <tr>
       <td>{int(row['Age'])}</td>
       <td>{html.escape(str(row['Date']))}</td>
       <td style="color: {status_color}; font-weight: bold;">{html.escape(status_label)}</td>
       <td>{html.escape(saturn_cell)}</td>
-      <td>{html.escape(str(row['Detail']))}</td>
+      <td>{html.escape(str(row['Detail']))} · {html.escape(str(row['PhaseLabel']))}</td>
     </tr>
 """
     report += f"""
@@ -383,28 +485,6 @@ def build_html_report(name, entity_type, birth_date, sun_sign_name, df_results, 
     return report
 
 
-def run_monte_carlo_29_58(seed: int = 20261122):
-    rng = random.Random(seed)
-    critical_29_58 = set()
-    for i in range(29, 59):
-        if (
-            fractional_deviation(i, K_HAUMEA) <= EPSILON
-            and fractional_deviation(i, K_ERIS) <= EPSILON
-            and fractional_deviation(i, K_NEPTUNE) <= EPSILON
-        ):
-            critical_29_58.add(i)
-
-    cohorts = []
-    for label in ("100 فرد من المشاهير", "100 شركة", "100 دولة"):
-        matches = sum(1 for _ in range(100) if rng.randint(29, 58) in critical_29_58)
-        cohorts.append({
-            "الفئة": label,
-            "نسبة التطابق من 100": matches,
-            "نسبة عدم التطابق من 100": 100 - matches,
-        })
-    return cohorts
-
-
 def safe_file_stem(name: str) -> str:
     stem = "".join(ch for ch in name if ch.isalnum() or ch in "-_ ").strip().replace(" ", "_")
     return stem or "report"
@@ -413,16 +493,16 @@ def safe_file_stem(name: str) -> str:
 # ==================== 6. واجهة Streamlit ====================
 def main():
     st.set_page_config(
-        page_title="رادار السنوات الحرجة: زحل - نبتون - هوميا - إيريس",
+        page_title="رادار السنوات الحرجة والطور التوافقي: زحل - نبتون - هوميا - إيريس",
         layout="wide",
         initial_sidebar_state="expanded",
     )
     st.markdown("<style>html, body, [class*='css'] { direction: rtl; text-align: right; }</style>", unsafe_allow_html=True)
-    st.title("رادار السنوات الحرجة: زحل - نبتون - هوميا - إيريس")
+    st.title("رادار السنوات الحرجة والطور التوافقي: زحل - نبتون - هوميا - إيريس")
 
     with st.sidebar:
         st.header("إعدادات الإدخال")
-        preset = st.selectbox("نماذج مرجعية:", ["نموذج الورقة (1981-04-17)", "شركة (1976-04-01)", "مثال عن دولة (1970-11-13)"])
+        preset = st.selectbox("نماذج مرجعية:", ["نموذج الورقة (1981-04-17)", "شركة أبل (1976-04-01)", "مثال عن دولة (1970-11-13)"])
         if preset.startswith("مثال عن دولة"):
             def_type, def_name, def_y, def_m, def_d = "دولة", "مثال عن دولة", 1970, 11, 13
         elif preset.startswith("شركة"):
@@ -435,56 +515,55 @@ def main():
         year = st.number_input("السنة", min_value=1800, max_value=date.today().year, value=def_y)
         month = st.number_input("الشهر", min_value=1, max_value=12, value=def_m)
         day = st.number_input("اليوم", min_value=1, max_value=31, value=def_d)
-        st.info("المعايير المثبتة: زحل 4.48 · ε = 0.30 · البرج الشمسي تلقائياً · البيت أولاً · السنوات الحرجة فقط")
-        run_btn = st.button("تشغيل الرادار", type="primary", use_container_width=True)
+        st.info("المعايير المثبتة: زحل 4.48 · ε = 0.30 · البرج الشمسي تلقائياً · البيت أولاً · الرنين المستمر + الطور الزاوي الحقيقي")
+        run_btn = st.button("تشغيل الرادار المطور", type="primary", use_container_width=True)
 
-    tab1, tab2 = st.tabs(["السنوات الحرجة (زحل - نبتون - هوميا - إيريس)", "التدقيق العلمي والإحصائي (مونت كارلو 29–58)"])
+    if not run_btn:
+        st.info("اضغط على «تشغيل الرادار المطور» لعرض مصفوفة السنوات الحرجة والطور التوافقي.")
+        return
 
-    with tab1:
-        if not run_btn:
-            st.info("اضغط على «تشغيل الرادار» لعرض المصفوفة.")
-        else:
-            try:
-                birth_date = date(int(year), int(month), int(day))
-            except ValueError:
-                st.error("تاريخ الميلاد / التأسيس غير صالح.")
-                return
+    try:
+        birth_date = date(int(year), int(month), int(day))
+    except ValueError:
+        st.error("تاريخ الميلاد / التأسيس غير صالح.")
+        return
 
-            birth_jd = swe.julday(birth_date.year, birth_date.month, birth_date.day, 12.0)
-            sun_lon = get_planet_longitude(birth_jd, swe.SUN)
-            sat_lon = get_planet_longitude(birth_jd, swe.SATURN)
-            jup_lon = get_planet_longitude(birth_jd, swe.JUPITER)
-            sun_sign_idx, sun_sign_name, _ = get_zodiac_sign(sun_lon)
-            natal_points = [(sun_lon, "الشمس الأصلية"), (sat_lon, "زحل الأصلي"), (jup_lon, "المشتري الأصلي")]
+    birth_jd = swe.julday(birth_date.year, birth_date.month, birth_date.day, 12.0)
+    sun_lon = get_planet_longitude(birth_jd, swe.SUN)
+    sat_lon = get_planet_longitude(birth_jd, swe.SATURN)
+    jup_lon = get_planet_longitude(birth_jd, swe.JUPITER)
+    nep_lon = get_planet_longitude(birth_jd, swe.NEPTUNE)
+    sun_sign_idx, sun_sign_name, _ = get_zodiac_sign(sun_lon)
+    natal_points = [(sun_lon, "الشمس الأصلية"), (sat_lon, "زحل الأصلي"), (jup_lon, "المشتري الأصلي")]
 
-            usm_data = [r for r in run_usm_engine_daily(birth_date) if r["Status"] in NEPTUNE_CRITICAL]
-            age_label = "عمر الشخص" if entity_type == "شخص" else "عمر الكيان"
-            processed = []
-            for row in usm_data:
-                detail = analyze_reference_transit(
-                    entity_type, sun_sign_idx, natal_points, row["YearDate"], row["Status"], row["SaturnCycle"]
-                )
-                processed.append({
-                    "Age": row["Age"],
-                    "Date": row["DateStr"],
-                    "Status": row["Status"],
-                    "SaturnCycle": row["SaturnCycle"],
-                    "SaturnDev": row["SaturnDev"],
-                    "Detail": detail,
-                })
+    all_rows = run_upgraded_usm_engine(birth_date, birth_jd, sun_lon, sat_lon, nep_lon)
+    active_rows = [r for r in all_rows if r["Status"] in ACTIVE_RADAR]
+    age_label = "عمر الشخص" if entity_type == "شخص" else "عمر الكيان"
+    processed = []
+    for row in active_rows:
+        detail = analyze_reference_transit(
+            entity_type, sun_sign_idx, natal_points, row["YearDate"], row["Status"], row["SaturnCycle"]
+        )
+        processed.append({
+            "Age": row["Age"],
+            "Date": row["DateStr"],
+            "Status": row["Status"],
+            "SaturnCycle": row["SaturnCycle"],
+            "SaturnDev": row["SaturnDev"],
+            "HybridDev": row["HybridDev"],
+            "PhaseLabel": f"{row['PhaseLabel']} (جرم {row['PhaseOrbDeg']:.2f}°)",
+            "Detail": detail,
+        })
 
-            df_results = pd.DataFrame(processed)
-            st.dataframe(df_results, use_container_width=True)
+    df_results = pd.DataFrame(processed)
+    st.dataframe(df_results, use_container_width=True)
 
-            html_report = build_html_report(name_input, entity_type, birth_date, sun_sign_name, df_results, age_label)
-            b64 = base64.b64encode(html_report.encode("utf-8")).decode("utf-8")
-            st.markdown(
-                f'<a href="data:text/html;base64,{b64}" download="USM_Report_{safe_file_stem(name_input)}.html">تنزيل التقرير القابل للطباعة (HTML)</a>',
-                unsafe_allow_html=True,
-            )
-
-    with tab2:
-        st.table(pd.DataFrame(run_monte_carlo_29_58()))
+    html_report = build_html_report(name_input, entity_type, birth_date, sun_sign_name, df_results, age_label)
+    b64 = base64.b64encode(html_report.encode("utf-8")).decode("utf-8")
+    st.markdown(
+        f'<a href="data:text/html;base64,{b64}" download="USM_Report_{safe_file_stem(name_input)}.html">تنزيل التقرير القابل للطباعة (HTML)</a>',
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":
