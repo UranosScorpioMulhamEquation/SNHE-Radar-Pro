@@ -4,4 +4,3 @@ geonamescache
 timezonefinder
 pytz
 pandas
-supabase
