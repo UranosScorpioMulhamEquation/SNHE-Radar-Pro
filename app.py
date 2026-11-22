@@ -75,7 +75,7 @@ html, body, [class*="css"], .stApp {
 }
 [data-testid="stSidebar"] {
     background-color: #0A0F20;
-    border-left: 1px solid #1F2A48;
+    border-left: 1px solid #E8EEF9;
 }
 .stButton > button[kind="primary"] {
     background-color: #F5B942;
