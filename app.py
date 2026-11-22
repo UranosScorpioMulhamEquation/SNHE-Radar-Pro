@@ -77,6 +77,27 @@ html, body, [class*="css"], .stApp {
     background-color: #0A0F20;
     border-left: 1px solid #E8EEF9;
 }
+
+/* عناوين الإدخالات وخيارات الراديو والنصوص داخل القائمة الجانبية */
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p,
+[data-testid="stSidebar"] [data-testid="stWidgetLabel"] span,
+[data-testid="stSidebar"] .stRadio label p,
+[data-testid="stSidebar"] .stRadio label span,
+[data-testid="stSidebar"] [data-testid="stCaptionContainer"],
+[data-testid="stSidebar"] .stMarkdown p {
+    color: #FFFFFF !important;
+    font-weight: 600;
+}
+
+/* الحفاظ على وضوح النص داخل حقول الإدخال والقوائم ذات الخلفية الفاتحة */
+[data-testid="stSidebar"] input,
+[data-testid="stSidebar"] textarea,
+[data-testid="stSidebar"] [data-baseweb="select"] span,
+[data-testid="stSidebar"] [data-baseweb="select"] div {
+    color: #0F172A !important;
+}
+
 .stButton > button[kind="primary"] {
     background-color: #F5B942;
     color: #140E00;
@@ -106,7 +127,6 @@ html, body, [class*="css"], .stApp {
 .kuiper-kpi-val { font-size: 20px; font-weight: 800; color: #FFFFFF; margin-top: 4px; }
 </style>
 """
-
 # ==================== الثوابت المثبتة لمحرك زحل-نبتون-هوميا-إيريس ====================
 K_HAUMEA = 6.19
 K_ERIS = 9.30
