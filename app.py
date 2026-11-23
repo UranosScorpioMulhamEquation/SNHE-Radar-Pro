@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import calendar
 import html
 import math
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
@@ -173,20 +172,18 @@ html, body, [class*="css"], .stApp {
 .kuiper-kpi-val { font-size: 20px; font-weight: 800; color: #FFFFFF; margin-top: 4px; }
 </style>
 """
-# ==================== الثوابت المثبتة للمحرك الثلاثي (إيريس · نبتون · زحل) ====================
+# ==================== الثوابت المثبتة لطبقات رادار كاليبر (إيريس · نبتون · زحل) ====================
 # كل طبقة تُقاس بانحراف (العمر ÷ K) عن أقرب عدد صحيح من الدورات، والعتبة EPSILON كسر من الدورة.
 # السنة تُعلَّم فقط إذا حققت كل الطبقات الفعّالة (ACTIVE_LAYERS) معاً: الانحراف ≤ EPSILON لكل منها.
-# هوميا خرجت من شرط التعليم، وتبقى محسوبة لشيء واحد فقط: إزاحة الأشهر في تاريخ الخطر بتقويم 360 يوماً
-# (كما في hen-radar). لإعادتها إلى الشرط أضف "haumea" إلى ACTIVE_LAYERS دون أي تعديل آخر.
-K_HAUMEA = 6.18
+# النتيجة سنة كاملة فقط (سنة الميلاد + العمر)، بلا أشهر ولا أيام.
 K_ERIS = 9.30
 K_NEPTUNE = 10.77
 K_SATURN = 4.48
 EPSILON = 0.30
 ACTIVE_LAYERS = ("eris", "saturn", "neptune")
-LAYER_AR = {"haumea": "هوميا", "eris": "إيريس", "neptune": "نبتون", "saturn": "زحل"}
-LAYER_K = {"haumea": K_HAUMEA, "eris": K_ERIS, "neptune": K_NEPTUNE, "saturn": K_SATURN}
-LAYER_ROLE = {"saturn": "زحل (هيكلة)", "neptune": "نبتون (نهايات)", "haumea": "هوميا (تغيير)", "eris": "إيريس (فرض)"}
+LAYER_AR = {"eris": "إيريس", "neptune": "نبتون", "saturn": "زحل"}
+LAYER_K = {"eris": K_ERIS, "neptune": K_NEPTUNE, "saturn": K_SATURN}
+LAYER_ROLE = {"saturn": "زحل (هيكلة)", "neptune": "نبتون (نهايات)", "eris": "إيريس (فرض)"}
 
 TROPICAL_YEAR = 365.2421904
 NAIBOD_PER_DAY = 360.0 / TROPICAL_YEAR / TROPICAL_YEAR  # = 0.9856 درجة/سنة
@@ -196,7 +193,7 @@ STATUS_FOUR_AXIS = "FOUR_AXIS"
 ACTIVE_RADAR = {STATUS_FOUR_AXIS}
 
 STATUS_LABELS: Dict[str, Tuple[str, str, str]] = {
-    STATUS_FOUR_AXIS: ("سنة تغيير ثلاثية الطبقات", " + ".join(LAYER_ROLE[l] for l in ("saturn", "neptune", "eris") if l in ACTIVE_LAYERS), "#F59E0B"),
+    STATUS_FOUR_AXIS: ("سنة تغيير (طبقات رادار كاليبر)", " + ".join(LAYER_ROLE[l] for l in ("saturn", "neptune", "eris") if l in ACTIVE_LAYERS), "#F59E0B"),
     STATUS_NORMAL: ("سنة اعتيادية", "مسار طبيعي", "#64748B"),
 }
 
@@ -206,7 +203,6 @@ ZODIAC_SIGNS = [
 ]
 SIGN_GLYPHS = ["♈", "♉", "♊", "♋", "♌", "♍", "♎", "♏", "♐", "♑", "♒", "♓"]
 SIGN_RULERS = ["MAR", "VEN", "MER", "MOON", "SUN", "MER", "VEN", "MAR", "JUP", "SAT", "SAT", "JUP"]
-AR_MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
 
 PLANETS = ["SUN", "MOON", "MER", "VEN", "MAR", "JUP", "SAT", "URA", "NEP", "PLU", "NN", "SN"]
 PLANET_IDS = {
@@ -251,7 +247,7 @@ TECH_AR = {
     "PD": "1. الاتجاهات (PD) - رمزية بمفتاح نيبود",
     "SA": "2. الأقواس الشمسية (SA)",
     "SD": "3. التقدمية الثانوية (SD)",
-    "AP": "4. الانتهاء السنوي والشهري (AP)",
+    "AP": "4. الانتهاء السنوي (AP)",
     "TR": "5. العبور الكوكبي (TR)",
     "SR": "6. العودة الشمسية (SR)",
 }
@@ -503,19 +499,6 @@ def find_solar_return_jd(natal_sun_lon: float, target_year: int) -> float:
     return 0.5 * (jd_s + jd_e)
 
 
-def pick_solar_return_jd(natal_sun_lon: float, target_jd: float, target_year: int) -> float:
-    """العودة الشمسية التي تغطي تاريخ الهدف: آخر عودة وقعت قبله أو عنده."""
-    cands = [find_solar_return_jd(natal_sun_lon, y) for y in (target_year - 1, target_year, target_year + 1)]
-    valid = [c for c in cands if c <= target_jd]
-    return max(valid) if valid else cands[0]
-
-
-def get_solar_month_window(sr_dt: datetime, house_num: int) -> str:
-    start_dt = sr_dt + timedelta(days=(house_num - 1) * 30.4368)
-    end_dt = start_dt + timedelta(days=30.4368)
-    m1 = AR_MONTHS[start_dt.month - 1]
-    m2 = AR_MONTHS[end_dt.month - 1]
-    return f"{m1} - {m2} {end_dt.year}"
 
 
 # ==================== المحرك الثلاثي (إيريس · نبتون · زحل) ====================
@@ -526,7 +509,6 @@ def layer_dev(age: float, k: float) -> float:
 
 def radar_layer_devs(age: int) -> Dict[str, float]:
     return {
-        "haumea": layer_dev(age, K_HAUMEA),
         "eris": layer_dev(age, K_ERIS),
         "neptune": layer_dev(age, K_NEPTUNE),
         "saturn": layer_dev(age, K_SATURN),
@@ -538,23 +520,9 @@ def is_four_axis(devs: Dict[str, float]) -> bool:
     return all(devs[l] <= EPSILON for l in ACTIVE_LAYERS)
 
 
-def radar_target_date(birth_date: date, age: int, haumea_dev: float, eris_dev: float) -> Tuple[str, date]:
-    """تاريخ الخطر بتقويم 360 يوماً (كما في hen-radar): أيام من إيريس وأشهر من هوميا.
-    يعيد النص بالتقويم البابلي، وتاريخاً ميلادياً حقيقياً للحسابات الفلكية (اليوم يُقصّ لآخر يوم في الشهر)."""
-    offset_day = int(eris_dev * 30)
-    offset_month = int(haumea_dev * 12)
-    new_day = birth_date.day + offset_day
-    new_month = birth_date.month + offset_month
-    new_year = birth_date.year + age
-    while new_day > 30:
-        new_day -= 30
-        new_month += 1
-    while new_month > 12:
-        new_month -= 12
-        new_year += 1
-    label = f"{new_year}-{new_month:02d}-{new_day:02d}"
-    last = calendar.monthrange(new_year, new_month)[1]
-    return label, date(new_year, new_month, min(new_day, last))
+def radar_target_year(birth_date: date, age: int) -> int:
+    """سنة الهدف = سنة الميلاد + العمر، بلا أشهر ولا أيام."""
+    return birth_date.year + age
 
 
 # ==================== محرك الخرائط الست (تفسير السنوات المعلَّمة) ====================
@@ -659,7 +627,8 @@ def build_natal(birth_date: date, lat: float, lon: float) -> dict:
     }
 
 
-def evaluate_six_charts_for_year(natal: dict, target_jd: float, target_d: date, age: int, entity_type: str) -> dict:
+def evaluate_six_charts_for_year(natal: dict, target_jd: float, age: int, entity_type: str) -> dict:
+    """target_jd هو لحظة العودة الشمسية لسنة الهدف؛ كل الحسابات تُجرى عندها (السنة تبدأ من العودة)."""
     acc = TechAccumulator()
     sig_list, pls_list, event_house_key = get_annual_spec(entity_type)
     cusps, npl, nh, sun_idx = natal["cusps"], natal["pl"], natal["house_of"], natal["sun_sign_idx"]
@@ -698,22 +667,14 @@ def evaluate_six_charts_for_year(natal: dict, target_jd: float, target_d: date, 
                 acc.add("SD", f"{FACTOR_AR[s]} ({lab})", f"{PLANET_AR[p]} أصلي", mod360(cusps[s] + arc_sd), npl[p], fs * fp, tw, orb, orb, ASPECTS, house=sh[s], planet=p)
                 acc.add("SD", f"{PLANET_AR[p]} ({lab})", f"{FACTOR_AR[s]} أصلي", pl_sd[p], cusps[s], fs * fp, tw * 0.95, orb, orb, ASPECTS, house=sh[s], planet=p)
 
-    # 4. الانتهاء السنوي والشهري (AP): العمر هو سنة الانتهاء مباشرة (تاريخ الهدف يقع داخل عام العمر)
-    try:
-        anniv = date(natal["birth_date"].year + age, natal["birth_date"].month, natal["birth_date"].day)
-    except ValueError:
-        anniv = date(natal["birth_date"].year + age, 2, 28)
-    frac_yr = max(0.0, min(0.9999, (target_d - anniv).days / 365.2422))
-    prof_arc_yr = (age + frac_yr) * 30.0
-    prof_arc_mo = age * 30.0 + frac_yr * 360.0
+    # 4. الانتهاء السنوي (AP): 30° لكل سنة عمر
+    prof_arc_yr = age * 30.0
     prof_as = mod360(cusps["AS"] + prof_arc_yr)
     prof_mc = mod360(cusps["MC"] + prof_arc_yr)
-    prof_as_mo = mod360(cusps["AS"] + prof_arc_mo)
     for p, fp in pls_list:
         acc.add("AP", "انتهاء الطالع السنوي", f"{PLANET_AR[p]} أصلي", prof_as, npl[p], fp, 0.95, AP_ORB_MAJOR, AP_ORB_MINOR, MAJOR_ASPECTS, house=nh[p], planet=p)
         acc.add("AP", "انتهاء العاشر السنوي", f"{PLANET_AR[p]} أصلي", prof_mc, npl[p], fp, 0.85, AP_ORB_MAJOR, AP_ORB_MINOR, MAJOR_ASPECTS, house=nh[p], planet=p)
         acc.add("AP", "انتهاء الطالع السنوي", f"{PLANET_AR[p]} عابر", prof_as, pl_tr[p], fp, 0.8, AP_ORB_MAJOR, AP_ORB_MINOR, MAJOR_ASPECTS, house=tr_house(p), planet=p)
-        acc.add("AP", "انتهاء الطالع الشهري", f"{PLANET_AR[p]} عابر", prof_as_mo, pl_tr[p], fp, 0.65, AP_ORB_MAJOR, AP_ORB_MINOR, MAJOR_ASPECTS, house=tr_house(p), planet=p)
 
     prof_sign_idx = (sun_idx + age) % 12
     lord_of_year = SIGN_RULERS[prof_sign_idx]
@@ -732,8 +693,8 @@ def evaluate_six_charts_for_year(natal: dict, target_jd: float, target_d: date, 
             for s, fs in sig_list:
                 acc.add("TR", f"{PLANET_AR[p]} عابر ({lab})", f"{FACTOR_AR[s]} أصلي", pl_set[p], cusps[s], fs * fp, tw, TR_ORB, TR_ORB, MAJOR_ASPECTS, house=sh[s], planet=p)
 
-    # 6. العودة الشمسية (SR): العودة التي تغطي تاريخ الهدف. الشمس مستبعدة من الاتصالات لأنها ثابتة على موضعها الأصلي
-    sr_jd = pick_solar_return_jd(npl["SUN"], target_jd, target_d.year)
+    # 6. العودة الشمسية (SR) لسنة الهدف. الشمس مستبعدة من الاتصالات لأنها ثابتة على موضعها الأصلي
+    sr_jd = target_jd
     pl_sr = get_lons(sr_jd)
     speeds_sr = get_speeds(sr_jd)
     for p, fp in pls_list:
@@ -942,11 +903,9 @@ def interpret_year(natal: dict, target_jd: float, age: int, entity_type: str, si
 
     ranked = sorted(range(1, 13), key=lambda h: score[h], reverse=True)
     main_houses = [h for h in ranked[:3] if h == ranked[0] or score[h] >= 0.6 * score[ranked[0]]]
-    sr_dt = six["solar_return"]["date_utc"]
     domains = [{
         "house": h, "label": labels[h], "score": score[h], "valence": val[h],
         "valence_label": VALENCE_AR[valence_key(val[h])], "valence_key": valence_key(val[h]),
-        "window": get_solar_month_window(sr_dt, h),
     } for h in main_houses]
 
     change_kind, sector_txt = "", ""
@@ -955,7 +914,7 @@ def interpret_year(natal: dict, target_jd: float, age: int, entity_type: str, si
         names = " ثم ".join(d["label"] for d in domains)
         headline = f"التغيير يخص: {names} — الاتجاه العام: {VALENCE_AR[valence_key(overall)]}"
         for d in domains:
-            advice.append(f"{d['label']}: {IND_ADVICE[d['house']]} ({d['window']}).")
+            advice.append(f"{d['label']}: {IND_ADVICE[d['house']]}.")
             warnings.append(f"{d['label']}: {IND_WARN[d['house']]}.")
     elif entity_type == "company":
         s_mean = sum(score[h] for h in COMPANY_GROUPS["هيكلي"]) / len(COMPANY_GROUPS["هيكلي"])
@@ -967,7 +926,7 @@ def interpret_year(natal: dict, target_jd: float, age: int, entity_type: str, si
         advice.append(COMPANY_KIND_ADVICE[change_kind] + ".")
         warnings.append(COMPANY_KIND_WARN[change_kind] + ".")
         for d in domains:
-            advice.append(ADV_TPL[d["valence_key"]].format(d=d["label"]) + f" ({d['window']}).")
+            advice.append(ADV_TPL[d["valence_key"]].format(d=d["label"]) + ".")
             warnings.append(WARN_TPL[d["valence_key"]].format(d=d["label"]) + ".")
     else:
         g_score = {g: sum(score[h] for h in hs_) / len(hs_) for g, hs_ in COUNTRY_GROUPS.items()}
@@ -981,11 +940,11 @@ def interpret_year(natal: dict, target_jd: float, age: int, entity_type: str, si
             advice.append(COUNTRY_GROUP_ADVICE[g] + ".")
             warnings.append(COUNTRY_GROUP_WARN[g] + ".")
         for d in domains:
-            advice.append(ADV_TPL[d["valence_key"]].format(d=d["label"]) + f" ({d['window']}).")
+            advice.append(ADV_TPL[d["valence_key"]].format(d=d["label"]) + ".")
             warnings.append(WARN_TPL[d["valence_key"]].format(d=d["label"]) + ".")
 
     advice.append(f"برج الانتهاء السنوي ({six['profection_sign_name']}) برب السنة {six['lord_of_year_ar']}: ركّز على قرارات الحسم المدروسة.")
-    warnings.append("سنة تغيير ثلاثية الطبقات (" + " و".join(LAYER_AR[l] for l in ("saturn", "neptune", "eris") if l in ACTIVE_LAYERS) + "): تجنب القرارات الاندفاعية غير القابلة للتراجع.")
+    warnings.append("سنة تغيير ضمن طبقات رادار كاليبر: تجنب القرارات الاندفاعية غير القابلة للتراجع.")
 
     # نص العبور: زحل (هيكلة) ونبتون (نهايات)
     natal_pts = [(natal["pl"]["SUN"], "الشمس الأصلية"), (natal["pl"]["SAT"], "زحل الأصلي"),
@@ -1009,14 +968,13 @@ def interpret_year(natal: dict, target_jd: float, age: int, entity_type: str, si
     }
 
 
-def build_house_evaluations(interp: dict, entity_type: str, sr_dt: datetime) -> List[dict]:
+def build_house_evaluations(interp: dict, entity_type: str) -> List[dict]:
     out = []
     for h in range(1, 13):
         out.append({
             "house": h, "meaning": HOUSES_MEANINGS[entity_type][h],
             "score": interp["house_scores"][h],
             "status": VALENCE_AR[valence_key(interp["house_valence"][h])],
-            "month_window": get_solar_month_window(sr_dt, h),
         })
     return out
 
@@ -1030,26 +988,26 @@ def run_complete_annual_radar(name: str, entity_type: str, birth_date: date, cit
         devs = radar_layer_devs(age)
         four = is_four_axis(devs)
         status = STATUS_FOUR_AXIS if four else STATUS_NORMAL
-        risk_label, target_d = radar_target_date(birth_date, age, devs["haumea"], devs["eris"])
+        target_year = radar_target_year(birth_date, age)
         s_prim, s_sub, s_col = STATUS_LABELS[status]
         row = {
-            "serial": age, "age": age, "target_year": target_d.year, "target_date_str": target_d.isoformat(),
-            "risk_date_360": risk_label, "entity_name": name, "entity_type": entity_type,
+            "serial": age, "age": age, "target_year": target_year,
+            "entity_name": name, "entity_type": entity_type,
             "birth_date_str": birth_date.isoformat(), "status": status,
             "radar_primary": s_prim, "radar_sub": s_sub, "status_color": s_col,
-            "haumea_dev": devs["haumea"], "eris_dev": devs["eris"],
+            "eris_dev": devs["eris"],
             "neptune_dev": devs["neptune"], "saturn_dev": devs["saturn"],
             "saturn_cycle": round(age / K_SATURN),
             "max_dev": max(devs.values()),
-            "rms_dev": math.sqrt(sum(v * v for v in devs.values()) / 4.0),
+            "rms_dev": math.sqrt(sum(v * v for v in devs.values()) / len(devs)),
             "headline": "", "transit_details": "", "overall_summary": "", "advice_list": [], "warnings_list": [],
             "domains": [],
         }
         if four:
             serial += 1
             row["serial"] = serial
-            target_jd = swe.julday(target_d.year, target_d.month, target_d.day, 12.0)
-            six = evaluate_six_charts_for_year(natal, target_jd, target_d, age, entity_type)
+            target_jd = find_solar_return_jd(natal["pl"]["SUN"], target_year)
+            six = evaluate_six_charts_for_year(natal, target_jd, age, entity_type)
             interp = interpret_year(natal, target_jd, age, entity_type, six)
             row.update({
                 "six_charts": six,
@@ -1063,7 +1021,7 @@ def run_complete_annual_radar(name: str, entity_type: str, birth_date: date, cit
                 "transit_details": interp["transit_details"],
                 "advice_list": interp["advice_list"],
                 "warnings_list": interp["warnings_list"],
-                "house_evaluations": build_house_evaluations(interp, entity_type, six["solar_return"]["date_utc"]),
+                "house_evaluations": build_house_evaluations(interp, entity_type),
             })
             active_years.append(row)
         all_years.append(row)
@@ -1113,7 +1071,7 @@ def build_unified_html_report(run: dict, rows_to_display: List[dict]) -> str:
         if not r.get("domains"):
             continue
         dom_html = "".join(
-            f"<div><b>{html.escape(d['label'])}</b> ({html.escape(d['valence_label'])}) — <small>{html.escape(d['window'])}</small></div>"
+            f"<div><b>{html.escape(d['label'])}</b> ({html.escape(d['valence_label'])})</div>"
             for d in r["domains"]
         )
         adv_html = "".join(f"<li>{html.escape(a)}</li>" for a in r["advice_list"])
@@ -1123,7 +1081,7 @@ def build_unified_html_report(run: dict, rows_to_display: List[dict]) -> str:
         <tr>
             <td class="num">{r['serial']}</td>
             <td><b>{html.escape(r['entity_name'])}</b></td>
-            <td class="num">{html.escape(r['risk_date_360'])}<br><small>عمر {r['age']} · {r['target_year']}</small></td>
+            <td class="num"><b>{r['target_year']}</b><br><small>عمر {r['age']}</small></td>
             <td><span style="color:{r['status_color']};font-weight:800;">{html.escape(r['radar_primary'])}</span><br><small>{html.escape(layers)}</small><br><small>السداسي: {r['six_charts']['mean_percent']:.1f}%</small></td>
             <td><b>{html.escape(r['headline'])}</b>{dom_html}</td>
             <td>{html.escape(r['transit_details'])}</td>
@@ -1161,7 +1119,7 @@ td ul {{ margin: 0; padding-right: 16px; }}
   <button onclick="window.print()">طباعة / حفظ PDF</button>
 </div>
 <div class="paper">
-  <h1>التقرير الفلكي الاستشاري لسنوات التغيير ثلاثية الطبقات ({html.escape(entity_label)})</h1>
+  <h1>التقرير الفلكي الاستشاري لسنوات التغيير — طبقات رادار كاليبر ({html.escape(entity_label)})</h1>
   <div class="meta-grid">
     <div><b>الاسم:</b> {html.escape(run['entity_name'])}</div>
     <div><b>تاريخ الميلاد / التأسيس:</b> {html.escape(run['birth_date_str'])}</div>
@@ -1176,7 +1134,7 @@ td ul {{ margin: 0; padding-right: 16px; }}
   <table>
     <thead>
       <tr>
-        <th>#</th><th>الاسم</th><th>تاريخ الخطر (تقويم 360)</th><th>حالة الرادار</th>
+        <th>#</th><th>الاسم</th><th>السنة</th><th>حالة الرادار</th>
         <th>مجال التغيير والاتجاه</th><th>تفاصيل العبور</th><th>أهم النصائح</th><th>أهم التحذيرات</th>
       </tr>
     </thead>
@@ -1295,7 +1253,7 @@ def main() -> None:
     df_rows = [{
         "#": r["serial"],
         "الاسم": r["entity_name"],
-        "تاريخ الخطر (تقويم 360) | السنة": f"{r['risk_date_360']} | {r['target_year']} (عمر {r['age']})",
+        "السنة": f"{r['target_year']} (عمر {r['age']})",
         "حالة الرادار": f"{r['radar_primary']} — {_layers_text(r)}",
         "مجال التغيير والاتجاه": r["headline"] or "—",
         "تفاصيل العبور": r["transit_details"] or "—",
@@ -1325,7 +1283,7 @@ def main() -> None:
                 with col_e:
                     st.markdown(f'<div class="kuiper-card"><b>{sel_row["headline"]}</b></div>', unsafe_allow_html=True)
                     for d in sel_row["domains"]:
-                        st.markdown(f'<div class="kuiper-card"><b>{d["label"]}</b> — <span style="color:#F5B942;">{d["valence_label"]}</span><br><span style="color:#94A3B8;font-size:11px;">فترة التفعيل (شهور العودة الشمسية): {d["window"]}</span></div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="kuiper-card"><b>{d["label"]}</b> — <span style="color:#F5B942;">{d["valence_label"]}</span></div>', unsafe_allow_html=True)
                 st.info(f"**تفاصيل العبور:** {sel_row['transit_details']}")
                 ca, cw = st.columns(2)
                 with ca:
