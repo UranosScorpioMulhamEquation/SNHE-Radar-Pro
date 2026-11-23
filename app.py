@@ -173,14 +173,20 @@ html, body, [class*="css"], .stApp {
 .kuiper-kpi-val { font-size: 20px; font-weight: 800; color: #FFFFFF; margin-top: 4px; }
 </style>
 """
-# ==================== الثوابت المثبتة للمحرك الرباعي (هوميا · إيريس · نبتون · زحل) ====================
+# ==================== الثوابت المثبتة للمحرك الثلاثي (إيريس · نبتون · زحل) ====================
 # كل طبقة تُقاس بانحراف (العمر ÷ K) عن أقرب عدد صحيح من الدورات، والعتبة EPSILON كسر من الدورة.
-# السنة "رباعية" فقط إذا حققت الطبقات الأربع معاً: الانحراف ≤ EPSILON لكل منها.
+# السنة تُعلَّم فقط إذا حققت كل الطبقات الفعّالة (ACTIVE_LAYERS) معاً: الانحراف ≤ EPSILON لكل منها.
+# هوميا خرجت من شرط التعليم، وتبقى محسوبة لشيء واحد فقط: إزاحة الأشهر في تاريخ الخطر بتقويم 360 يوماً
+# (كما في hen-radar). لإعادتها إلى الشرط أضف "haumea" إلى ACTIVE_LAYERS دون أي تعديل آخر.
 K_HAUMEA = 6.18
 K_ERIS = 9.30
 K_NEPTUNE = 10.77
-K_SATURN = 4.4
+K_SATURN = 4.48
 EPSILON = 0.30
+ACTIVE_LAYERS = ("eris", "saturn", "neptune")
+LAYER_AR = {"haumea": "هوميا", "eris": "إيريس", "neptune": "نبتون", "saturn": "زحل"}
+LAYER_K = {"haumea": K_HAUMEA, "eris": K_ERIS, "neptune": K_NEPTUNE, "saturn": K_SATURN}
+LAYER_ROLE = {"saturn": "زحل (هيكلة)", "neptune": "نبتون (نهايات)", "haumea": "هوميا (تغيير)", "eris": "إيريس (فرض)"}
 
 TROPICAL_YEAR = 365.2421904
 NAIBOD_PER_DAY = 360.0 / TROPICAL_YEAR / TROPICAL_YEAR  # = 0.9856 درجة/سنة
@@ -190,7 +196,7 @@ STATUS_FOUR_AXIS = "FOUR_AXIS"
 ACTIVE_RADAR = {STATUS_FOUR_AXIS}
 
 STATUS_LABELS: Dict[str, Tuple[str, str, str]] = {
-    STATUS_FOUR_AXIS: ("سنة تغيير رباعية الطبقات", "زحل (هيكلة) + نبتون (نهايات) + هوميا (تغيير) + إيريس (فرض)", "#F59E0B"),
+    STATUS_FOUR_AXIS: ("سنة تغيير ثلاثية الطبقات", " + ".join(LAYER_ROLE[l] for l in ("saturn", "neptune", "eris") if l in ACTIVE_LAYERS), "#F59E0B"),
     STATUS_NORMAL: ("سنة اعتيادية", "مسار طبيعي", "#64748B"),
 }
 
@@ -512,7 +518,7 @@ def get_solar_month_window(sr_dt: datetime, house_num: int) -> str:
     return f"{m1} - {m2} {end_dt.year}"
 
 
-# ==================== المحرك الرباعي (هوميا · إيريس · نبتون · زحل) ====================
+# ==================== المحرك الثلاثي (إيريس · نبتون · زحل) ====================
 def layer_dev(age: float, k: float) -> float:
     """انحراف العمر عن أقرب عدد صحيح من الدورات (كسر من الدورة)."""
     return abs((age / k) - round(age / k))
@@ -528,7 +534,8 @@ def radar_layer_devs(age: int) -> Dict[str, float]:
 
 
 def is_four_axis(devs: Dict[str, float]) -> bool:
-    return all(v <= EPSILON for v in devs.values())
+    """اسم الدالة قديم؛ تتحقق الآن من الطبقات الفعّالة فقط (ACTIVE_LAYERS)."""
+    return all(devs[l] <= EPSILON for l in ACTIVE_LAYERS)
 
 
 def radar_target_date(birth_date: date, age: int, haumea_dev: float, eris_dev: float) -> Tuple[str, date]:
@@ -550,7 +557,7 @@ def radar_target_date(birth_date: date, age: int, haumea_dev: float, eris_dev: f
     return label, date(new_year, new_month, min(new_day, last))
 
 
-# ==================== محرك الخرائط الست (تفسير السنوات الرباعية) ====================
+# ==================== محرك الخرائط الست (تفسير السنوات المعلَّمة) ====================
 def aspect_valence(aspect: int, nature: float) -> float:
     """اتجاه الاتصال: التناغم (تسديس/تثليث) يميل للإيجاب، والتوتر (تربيع/مقابلة) للسلب، والاقتران يتبع طبيعة الكوكب."""
     if aspect == 0:
@@ -978,7 +985,7 @@ def interpret_year(natal: dict, target_jd: float, age: int, entity_type: str, si
             warnings.append(WARN_TPL[d["valence_key"]].format(d=d["label"]) + ".")
 
     advice.append(f"برج الانتهاء السنوي ({six['profection_sign_name']}) برب السنة {six['lord_of_year_ar']}: ركّز على قرارات الحسم المدروسة.")
-    warnings.append("سنة رباعية الطبقات (زحل ونبتون وهوميا وإيريس): تجنب القرارات الاندفاعية غير القابلة للتراجع.")
+    warnings.append("سنة تغيير ثلاثية الطبقات (" + " و".join(LAYER_AR[l] for l in ("saturn", "neptune", "eris") if l in ACTIVE_LAYERS) + "): تجنب القرارات الاندفاعية غير القابلة للتراجع.")
 
     # نص العبور: زحل (هيكلة) ونبتون (نهايات)
     natal_pts = [(natal["pl"]["SUN"], "الشمس الأصلية"), (natal["pl"]["SAT"], "زحل الأصلي"),
@@ -1099,7 +1106,7 @@ def render_zodiac_wheel_svg(year_row: dict) -> str:
 
 
 def build_unified_html_report(run: dict, rows_to_display: List[dict]) -> str:
-    """التقرير النهائي القابل للطباعة للسنوات الرباعية فقط."""
+    """التقرير النهائي القابل للطباعة للسنوات المعلَّمة فقط."""
     entity_label = ENTITY_LABELS[run["entity_type"]]
     matrix_rows = []
     for r in rows_to_display:
@@ -1111,8 +1118,7 @@ def build_unified_html_report(run: dict, rows_to_display: List[dict]) -> str:
         )
         adv_html = "".join(f"<li>{html.escape(a)}</li>" for a in r["advice_list"])
         warn_html = "".join(f"<li>{html.escape(w)}</li>" for w in r["warnings_list"])
-        layers = (f"هوميا {r['haumea_dev']:.2f} · إيريس {r['eris_dev']:.2f} · "
-                  f"نبتون {r['neptune_dev']:.2f} · زحل {r['saturn_dev']:.2f}")
+        layers = _layers_text(r)
         matrix_rows.append(f"""
         <tr>
             <td class="num">{r['serial']}</td>
@@ -1155,15 +1161,15 @@ td ul {{ margin: 0; padding-right: 16px; }}
   <button onclick="window.print()">طباعة / حفظ PDF</button>
 </div>
 <div class="paper">
-  <h1>التقرير الفلكي الاستشاري للسنوات رباعية الطبقات ({html.escape(entity_label)})</h1>
+  <h1>التقرير الفلكي الاستشاري لسنوات التغيير ثلاثية الطبقات ({html.escape(entity_label)})</h1>
   <div class="meta-grid">
     <div><b>الاسم:</b> {html.escape(run['entity_name'])}</div>
     <div><b>تاريخ الميلاد / التأسيس:</b> {html.escape(run['birth_date_str'])}</div>
     <div><b>الموقع:</b> {html.escape(run['city_label'])}</div>
     <div><b>الطالع الشمسي (كل برج بيت):</b> {html.escape(run['natal']['sun_sign_name'])}</div>
     <div><b>مدى المسح:</b> حتى {run['max_age']} سنة</div>
-    <div><b>سنوات التغيير الرباعية:</b> {len(run['active_years'])} سنة</div>
-    <div><b>ثوابت المحرك:</b> هوميا {K_HAUMEA} · إيريس {K_ERIS} · نبتون {K_NEPTUNE} · زحل {K_SATURN} · ε={EPSILON}</div>
+    <div><b>سنوات التغيير المعلَّمة:</b> {len(run['active_years'])} سنة</div>
+    <div><b>ثوابت المحرك:</b> {' · '.join(f'{LAYER_AR[l]} {LAYER_K[l]}' for l in ACTIVE_LAYERS)} · ε={EPSILON}</div>
     <div><b>تطوير:</b> استرو رادار</div>
   </div>
   <h2>مصفوفة سنوات التغيير</h2>
@@ -1176,7 +1182,7 @@ td ul {{ margin: 0; padding-right: 16px; }}
     </thead>
     <tbody>{"".join(matrix_rows)}</tbody>
   </table>
-  <p style="margin-top:20px;font-size:11px;color:#64748B;">هذا التقرير مخرَج تحليلي فلكي يدمج نظرية زحل-نبتون-هوميا-إيريس مع الخرائط الست (الاتجاهات الرمزية والأقواس الشمسية والتقدمية الثانوية والانتهاء السنوي والعبور والعودة الشمسية) ولا يُعد بديلاً عن الاستشارة المتخصصة.</p>
+  <p style="margin-top:20px;font-size:11px;color:#64748B;">هذا التقرير مخرَج تحليلي فلكي يدمج نظرية الطبقات (زحل ونبتون وإيريس) مع الخرائط الست (الاتجاهات الرمزية والأقواس الشمسية والتقدمية الثانوية والانتهاء السنوي والعبور والعودة الشمسية) ولا يُعد بديلاً عن الاستشارة المتخصصة.</p>
 </div>
 </body>
 </html>"""
@@ -1184,8 +1190,7 @@ td ul {{ margin: 0; padding-right: 16px; }}
 
 # ==================== واجهة Streamlit الرئيسية ====================
 def _layers_text(r: dict) -> str:
-    return (f"هوميا {r['haumea_dev']:.2f} · إيريس {r['eris_dev']:.2f} · "
-            f"نبتون {r['neptune_dev']:.2f} · زحل {r['saturn_dev']:.2f}")
+    return " · ".join(f"{LAYER_AR[l]} {r[l + '_dev']:.2f}" for l in ACTIVE_LAYERS)
 
 
 def main() -> None:
@@ -1238,7 +1243,7 @@ def main() -> None:
         <div class="kuiper-hero">
             <h1 style="margin:0;font-size:24px;color:#FFFFFF;">رادار كايبر التنبؤي المتقدم</h1>
             <p style="margin:4px 0 0;font-size:13px;color:#94A3B8;">
-                تطوير الفلكي الدكتور استرو رادار · السنة تُعلَّم عند تقاطع الطبقات الأربع (زحل · نبتون · هوميا · إيريس)، ثم تفسّرها العودة الشمسية والخرائط الست
+                تطوير الفلكي الدكتور استرو رادار · السنة تُعلَّم عند تقاطع الطبقات (زحل · نبتون · إيريس)، ثم تفسّرها العودة الشمسية والخرائط الست
             </p>
         </div>
         """,
@@ -1249,7 +1254,7 @@ def main() -> None:
         if not name.strip():
             st.error("يرجى إدخال الاسم قبل التشغيل.")
             return
-        with st.spinner("جاري حساب الطبقات الأربع وتفسير السنوات..."):
+        with st.spinner("جاري حساب الطبقات وتفسير السنوات..."):
             st.session_state["kuiper_run"] = run_complete_annual_radar(
                 name=name.strip(),
                 entity_type=entity_type,
@@ -1266,14 +1271,14 @@ def main() -> None:
     k1, k2, k3, k4 = st.columns(4)
     k1.markdown(f'<div class="kuiper-card"><div class="kuiper-kpi-label">الطالع الشمسي (كل برج بيت)</div><div class="kuiper-kpi-val" style="color:#F5B942;">{run["natal"]["sun_sign_name"]}</div></div>', unsafe_allow_html=True)
     k2.markdown(f'<div class="kuiper-card"><div class="kuiper-kpi-label">نطاق البحث السنوي</div><div class="kuiper-kpi-val">{run["max_age"]} سنة</div></div>', unsafe_allow_html=True)
-    k3.markdown(f'<div class="kuiper-card"><div class="kuiper-kpi-label">سنوات التغيير الرباعية</div><div class="kuiper-kpi-val" style="color:#34D399;">{len(run["active_years"])} سنة</div></div>', unsafe_allow_html=True)
+    k3.markdown(f'<div class="kuiper-card"><div class="kuiper-kpi-label">سنوات التغيير المعلَّمة</div><div class="kuiper-kpi-val" style="color:#34D399;">{len(run["active_years"])} سنة</div></div>', unsafe_allow_html=True)
     peak_txt = f"{peak_row['target_year']} ({peak_row['six_charts']['mean_percent']:.1f}%)" if peak_row else "—"
     k4.markdown(f'<div class="kuiper-card"><div class="kuiper-kpi-label">أعلى رنين للخرائط الست</div><div class="kuiper-kpi-val" style="color:#38BDF8;">{peak_txt}</div></div>', unsafe_allow_html=True)
 
     fc1, fc2 = st.columns([2, 1])
     filter_choice = fc1.selectbox(
         "تصفية مصفوفة السنوات:",
-        ["سنوات التغيير الرباعية", f"كامل السجل (1–{run['max_age']})"],
+        ["سنوات التغيير المعلَّمة", f"كامل السجل (1–{run['max_age']})"],
     )
     search_q = fc2.text_input("بحث بالسنة أو المجال:", placeholder="مثال: 2025 أو الصحة...")
 
@@ -1308,10 +1313,10 @@ def main() -> None:
         )
         sel_row = next(r for r in rows_filtered if r["age"] == sel_age)
 
-        t1, t2, t3, t4 = st.tabs(["الخريطة والتقييم العام", "تحليل الخرائط الست", "منحنى الطبقات الأربع", "التقرير النهائي القابل للطباعة"])
+        t1, t2, t3, t4 = st.tabs(["الخريطة والتقييم العام", "تحليل الخرائط الست", "منحنى الطبقات", "التقرير النهائي القابل للطباعة"])
         with t1:
             if "six_charts" not in sel_row:
-                st.info(f"سنة اعتيادية: لم تتقاطع فيها الطبقات الأربع. {_layers_text(sel_row)}")
+                st.info(f"سنة اعتيادية: لم تتقاطع فيها الطبقات الفعّالة. {_layers_text(sel_row)}")
             else:
                 col_w, col_e = st.columns([1, 1.4])
                 with col_w:
@@ -1330,7 +1335,7 @@ def main() -> None:
 
         with t2:
             if "six_charts" not in sel_row:
-                st.info("الخرائط الست تُحسب لسنوات التغيير الرباعية فقط.")
+                st.info("الخرائط الست تُحسب لسنوات التغيير المعلَّمة فقط.")
             else:
                 for tc in TECH_CODES:
                     pct = sel_row["six_charts"]["tech_percents"][tc]
@@ -1352,16 +1357,13 @@ def main() -> None:
                     st.dataframe(sr_df, use_container_width=True, hide_index=True)
 
         with t3:
-            curve_df = pd.DataFrame({
-                "العمر": [r["age"] for r in run["all_years"]],
-                "هوميا": [r["haumea_dev"] for r in run["all_years"]],
-                "إيريس": [r["eris_dev"] for r in run["all_years"]],
-                "نبتون": [r["neptune_dev"] for r in run["all_years"]],
-                "زحل": [r["saturn_dev"] for r in run["all_years"]],
-                "العتبة ε": [EPSILON for _ in run["all_years"]],
-            }).set_index("العمر")
+            curve_cols = {"العمر": [r["age"] for r in run["all_years"]]}
+            for l in ACTIVE_LAYERS:
+                curve_cols[LAYER_AR[l]] = [r[l + "_dev"] for r in run["all_years"]]
+            curve_cols["العتبة ε"] = [EPSILON for _ in run["all_years"]]
+            curve_df = pd.DataFrame(curve_cols).set_index("العمر")
             st.line_chart(curve_df)
-            st.caption(f"السنة رباعية عندما تكون الانحرافات الأربعة كلها تحت خط العتبة ε={EPSILON}. هذه السنة: {_layers_text(sel_row)}")
+            st.caption(f"تُعلَّم السنة عندما تكون انحرافات الطبقات الفعّالة كلها تحت خط العتبة ε={EPSILON}. هذه السنة: {_layers_text(sel_row)}")
 
         with t4:
             html_report = build_unified_html_report(run, run["active_years"])
