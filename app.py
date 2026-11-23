@@ -71,14 +71,41 @@ html, body, [class*="css"], .stApp {
     text-align: right;
     font-family: 'Cairo', system-ui, -apple-system, sans-serif;
     background-color: #060914;
-    color: #E8EEF9;
+    color: #FFFFFF;
 }
+
+/* عناوين الحقول والنصوص في الشاشة الرئيسية */
+.stApp label,
+.stApp [data-testid="stWidgetLabel"] p,
+.stApp [data-testid="stWidgetLabel"] span,
+.stApp [data-testid="stCaptionContainer"],
+.stApp .stMarkdown p {
+    color: #FFFFFF !important;
+    font-weight: 600;
+}
+
+/* التبويبات (st.tabs) في الشاشة الرئيسية */
+.stApp [data-baseweb="tab-list"] button,
+.stApp [data-baseweb="tab"] p,
+.stApp [data-baseweb="tab"] span,
+.stApp [data-baseweb="tab"] div {
+    color: #E8EEF9 !important;
+    font-weight: 700;
+}
+
+/* وضوح النص داخل حقول الإدخال والقوائم المنسدلة الفاتحة */
+.stApp input,
+.stApp textarea,
+.stApp [data-baseweb="select"] span,
+.stApp [data-baseweb="select"] div {
+    color: #0F172A !important;
+}
+
+/* القائمة الجانبية */
 [data-testid="stSidebar"] {
     background-color: #0A0F20;
     border-left: 1px solid #E8EEF9;
 }
-
-/* عناوين الإدخالات وخيارات الراديو والنصوص داخل القائمة الجانبية */
 [data-testid="stSidebar"] label,
 [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p,
 [data-testid="stSidebar"] [data-testid="stWidgetLabel"] span,
@@ -89,8 +116,6 @@ html, body, [class*="css"], .stApp {
     color: #FFFFFF !important;
     font-weight: 600;
 }
-
-/* الحفاظ على وضوح النص داخل حقول الإدخال والقوائم ذات الخلفية الفاتحة */
 [data-testid="stSidebar"] input,
 [data-testid="stSidebar"] textarea,
 [data-testid="stSidebar"] [data-baseweb="select"] span,
@@ -98,6 +123,23 @@ html, body, [class*="css"], .stApp {
     color: #0F172A !important;
 }
 
+/* الأزرار الثانوية وأزرار التحميل في الشاشة الرئيسية */
+.stApp .stButton > button:not([kind="primary"]),
+.stApp .stDownloadButton > button {
+    background-color: #162038 !important;
+    color: #FFFFFF !important;
+    border: 1px solid #3B4E7A !important;
+    font-weight: 700 !important;
+    border-radius: 10px !important;
+}
+.stApp .stButton > button:not([kind="primary"]):hover,
+.stApp .stDownloadButton > button:hover {
+    background-color: #223154 !important;
+    color: #FFFFFF !important;
+    border-color: #64748B !important;
+}
+
+/* الأزرار الأساسية (Primary) */
 .stButton > button[kind="primary"] {
     background-color: #F5B942;
     color: #140E00;
@@ -109,6 +151,7 @@ html, body, [class*="css"], .stApp {
     background-color: #FBD38D;
     color: #140E00;
 }
+
 .kuiper-card {
     background: #0E1426;
     border: 1px solid #1F2A48;
