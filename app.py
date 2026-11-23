@@ -178,7 +178,7 @@ html, body, [class*="css"], .stApp {
 # النتيجة سنة كاملة فقط (سنة الميلاد + العمر)، بلا أشهر ولا أيام.
 K_ERIS = 9.30
 K_NEPTUNE = 10.77
-K_SATURN = 4.48
+K_SATURN = 4.4
 EPSILON = 0.30
 ACTIVE_LAYERS = ("eris", "saturn", "neptune")
 LAYER_AR = {"eris": "إيريس", "neptune": "نبتون", "saturn": "زحل"}
